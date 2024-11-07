@@ -1,5 +1,6 @@
 module encoding::base32 @test;
 import std::encoding::base32;
+import std::io;
 
 // https://www.rfc-editor.org/rfc/rfc4648#section-10
 
@@ -97,4 +98,22 @@ fn void decode_nopadding()
 {
 	decode_tests(std_tests, base32::STD_ALPHABET, -1);
 	decode_tests(hex_tests, base32::HEX_ALPHABET, -1);
+}
+
+fn void! encode_writer()
+{
+	char[32] buf;
+	ByteWriter wb;
+	wb.init_with_buffer(&buf);
+
+	Base32Writer w;
+	w.init(&wb, base32::STD_ALPHABET, '=')!;
+	w.write("foobar")!;
+	w.write("foobar")!;
+	w.close()!;
+
+	char[] want = "MZXW6YTBOJTG633CMFZA====";
+	assert (buf[:want.len] == want[..], "got %s, but want %s",
+		(String)buf[..], (String)want);
+
 }

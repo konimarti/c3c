@@ -1,5 +1,7 @@
 module std::encoding::base32;
 
+import std::io;
+
 // This module implements base32 encoding according to RFC 4648
 // (https://www.rfc-editor.org/rfc/rfc4648)
 
@@ -308,3 +310,85 @@ fn void! Alphabet.validate(&self, int padding)
 		}
 	}
 }
+
+struct Base32Writer (OutStream)
+{
+	Base32Encoder enc;
+	OutStream w;
+	anyfault err;
+	char[5] buf;
+	int nbuf;
+	char[1024] out;
+}
+
+<*
+ @param enc "The 32-character alphabet for encoding."
+ @param padding "Set to a negative value to disable padding."
+ @require padding < 256
+*>
+fn void! Base32Writer.init(&self, OutStream w, Alphabet enc = STD_ALPHABET, int padding = STD_PADDING)
+{
+	self.enc.init(enc, padding)!;
+	self.w = w;
+}
+
+fn void! Base32Writer.write_byte(&self, char c) @dynamic
+{
+	unsupported();
+}
+
+// TODO: can this be generalized for other base* encoders?
+fn usz! Base32Writer.write(&self, char[] bytes) @dynamic
+{
+	usz n;
+	if (self.err) return self.err?;
+	if (self.nbuf > 0)
+	{
+		int i;
+		for (i = 0; i < bytes.len && self.nbuf < 5; i++)
+		{
+			self.buf[self.nbuf] = bytes[i];
+			self.nbuf++;
+		}
+		n += i;
+		bytes = bytes[i..];
+		if (self.nbuf < 5) return n;
+		self.enc.encode(self.buf[..], self.out[..])!;
+		self.w.write(self.out[:8])!;
+		self.nbuf = 0;
+	}
+
+	int nn;
+	while (bytes.len >= 5)
+	{
+		nn = self.out.len / 8 * 5;
+		if (nn > bytes.len)
+		{
+			nn = bytes.len;
+			nn -= nn % 5;
+		}
+		self.enc.encode(bytes[:nn], self.out[..])!;
+		self.w.write(self.out[:nn / 5 * 8])!;
+		n += nn;
+		bytes = bytes[nn..];
+	}
+
+	self.buf[:bytes.len] = bytes[:bytes.len];
+	self.nbuf = bytes.len;
+	n += bytes.len;
+
+	return n;
+}
+
+fn void! Base32Writer.close(&self) @dynamic
+{
+	if (self.err) return self.err?;
+	if (self.nbuf > 0)
+	{
+		self.enc.encode(self.buf[:self.nbuf], self.out[..])!;
+		self.w.write(self.out[:self.enc.encode_len(self.nbuf)])!;
+		self.nbuf = 0;
+	}
+	self.err = IoError.GENERAL_ERROR;
+}
+
