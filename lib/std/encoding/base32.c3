@@ -318,7 +318,7 @@ struct Base32Writer (OutStream)
 	anyfault err;
 	char[5] buf;
 	int nbuf;
-	char[1024] out;
+	char[8] out;
 }
 
 <*
@@ -326,69 +326,51 @@ struct Base32Writer (OutStream)
  @param padding "Set to a negative value to disable padding."
  @require padding < 256
 *>
-fn void! Base32Writer.init(&self, OutStream w, Alphabet enc = STD_ALPHABET, int padding = STD_PADDING)
+fn void! Base32Writer.init(&w, OutStream writer, Alphabet enc = STD_ALPHABET, int padding = STD_PADDING)
 {
-	self.enc.init(enc, padding)!;
-	self.w = w;
+	w.enc.init(enc, padding)!;
+	w.w = writer;
 }
 
-fn void! Base32Writer.write_byte(&self, char c) @dynamic
+fn void! Base32Writer.write_byte(&w, char c) @dynamic
 {
 	unsupported();
 }
 
 // TODO: can this be generalized for other base* encoders?
-fn usz! Base32Writer.write(&self, char[] bytes) @dynamic
+fn usz! Base32Writer.write(&w, char[] bytes) @dynamic
 {
-	usz n;
-	if (self.err) return self.err?;
-	if (self.nbuf > 0)
+	usz n, i;
+
+	if (w.err) return w.err?;
+
+	while (bytes.len)
 	{
-		int i;
-		for (i = 0; i < bytes.len && self.nbuf < 5; i++)
+		for (i = 0; i < bytes.len && w.nbuf < 5; i++)
 		{
-			self.buf[self.nbuf] = bytes[i];
-			self.nbuf++;
+			w.buf[w.nbuf] = bytes[i];
+			w.nbuf++;
 		}
 		n += i;
 		bytes = bytes[i..];
-		if (self.nbuf < 5) return n;
-		self.enc.encode(self.buf[..], self.out[..])!;
-		self.w.write(self.out[:8])!;
-		self.nbuf = 0;
+		if (w.nbuf < 5) return n;
+		w.enc.encode(w.buf[..], w.out[..])!;
+		w.w.write(w.out[:8])!;
+		w.nbuf = 0;
 	}
-
-	int nn;
-	while (bytes.len >= 5)
-	{
-		nn = self.out.len / 8 * 5;
-		if (nn > bytes.len)
-		{
-			nn = bytes.len;
-			nn -= nn % 5;
-		}
-		self.enc.encode(bytes[:nn], self.out[..])!;
-		self.w.write(self.out[:nn / 5 * 8])!;
-		n += nn;
-		bytes = bytes[nn..];
-	}
-
-	self.buf[:bytes.len] = bytes[:bytes.len];
-	self.nbuf = bytes.len;
-	n += bytes.len;
 
 	return n;
 }
 
-fn void! Base32Writer.close(&self) @dynamic
+fn void! Base32Writer.close(&w) @dynamic
 {
-	if (self.err) return self.err?;
-	if (self.nbuf > 0)
+	if (w.err) return w.err?;
+	if (w.nbuf > 0)
 	{
-		self.enc.encode(self.buf[:self.nbuf], self.out[..])!;
-		self.w.write(self.out[:self.enc.encode_len(self.nbuf)])!;
-		self.nbuf = 0;
+		w.enc.encode(w.buf[:w.nbuf], w.out[..])!;
+		w.w.write(w.out[:w.enc.encode_len(w.nbuf)])!;
+		w.nbuf = 0;
 	}
-	self.err = IoError.GENERAL_ERROR;
+	w.err = IoError.GENERAL_ERROR;
 }
 
