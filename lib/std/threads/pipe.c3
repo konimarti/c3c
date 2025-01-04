@@ -2,87 +2,7 @@ module std::io;
 
 import std::thread;
 
-struct Pipe
-{
-	PipeReader *r; 
-	PipeWriter *w;
-}
-
-<*
- Pipe implements a synchronous in-memory pipe. It provides PipeReader and
- PipeWriter to connect code which expects an OutStream with one that
- expects an InStream.
- 
- Each write to the PipeWriter will block until all data has been consumed by
- the PipeReader.
-*>
-fn void! Pipe.new(&self, Allocator allocator = allocator::heap())
-{
-	PipeImpl *pipe = allocator::new(allocator, PipeImpl).init(allocator)!;
-
-	PipeReader *pr = allocator::new(allocator, PipeReader);
-	pr.pipe = pipe;
-
-	PipeWriter *pw = allocator::new(allocator, PipeWriter);
-	pw.r = pr;
-
-	*self = { pr, pw, };
-}
-
-fn void! Pipe.free(&self)
-{
-	if (!self.r) return;
-	PipeImpl *pipe = self.r.pipe;
-	if (!pipe) return;
-
-	Allocator allocator = pipe.allocator;
-	allocator::free(allocator, pipe);
-	allocator::free(allocator, self.r);
-	allocator::free(allocator, self.w);
-	*self = {};
-}
-
-struct PipeReader (InStream)
-{
-	inline PipeImpl *pipe;
-}
-
-fn usz! PipeReader.read(&self, char[] bytes) @dynamic
-{
-	return self.pipe.read(bytes);
-}
-
-fn char! PipeReader.read_byte(&self) @dynamic
-{
-	return self.pipe.read_byte();
-}
-
-fn void! PipeReader.close(&self) @dynamic
-{
-	self.pipe.close()!;
-}
-
-struct PipeWriter (OutStream)
-{
-	inline PipeReader *r;
-}
-
-fn usz! PipeWriter.write(&self, char[] bytes) @dynamic
-{
-	return self.r.pipe.write(bytes);
-}
-
-fn void! PipeWriter.write_byte(&self, char c) @dynamic
-{
-	return self.r.pipe.write_byte(c);
-}
-
-fn void! PipeWriter.close(&self) @dynamic
-{
-	self.r.pipe.close()!;
-}
-
-struct PipeImpl (InStream, OutStream) @private
+struct Pipe (InStream, OutStream)
 {
 	Allocator allocator;
 	ByteBuffer buf;
@@ -94,7 +14,15 @@ struct PipeImpl (InStream, OutStream) @private
 	bool closed;
 }
 
-fn PipeImpl*! PipeImpl.init(&self, Allocator allocator)
+<*
+ Pipe implements a synchronous in-memory pipe. It provides PipeReader and
+ PipeWriter to connect code which expects an OutStream with one that
+ expects an InStream.
+ 
+ Each write to the PipeWriter will block until all data has been consumed by
+ the PipeReader.
+*>
+fn Pipe*! Pipe.new_init(&self, Allocator allocator = allocator::heap())
 {
 	self.allocator = allocator;
 	self.buf.new_init(256, 64, allocator)!;
@@ -104,16 +32,17 @@ fn PipeImpl*! PipeImpl.init(&self, Allocator allocator)
 	return self;
 }
 
-fn void! PipeImpl.destroy(&self) @dynamic
+fn void! Pipe.free(&self) @dynamic
 {
+	if (!self.closed) (void)self.close();
+	(void)self.wr.destroy();
+	(void)self.rd.destroy();
+	(void)self.mu.destroy();
 	self.buf.free();
-	self.wr.destroy()!;
-	self.rd.destroy()!;
-	self.mu.destroy()!;
 	*self = {};
 }
 
-fn void! PipeImpl.close(&self) @dynamic
+fn void! Pipe.close(&self) @dynamic
 {
 	self.mu.lock()!;
 	defer (void)self.mu.unlock();
@@ -127,7 +56,7 @@ fn void! PipeImpl.close(&self) @dynamic
 <*
 @param [&inout] self
 *>
-fn usz! PipeImpl.read(&self, char[] bytes) @dynamic
+fn usz! Pipe.read(&self, char[] bytes) @dynamic
 {
 	self.mu.lock()!;
 	defer (void)self.mu.unlock();
@@ -149,7 +78,7 @@ fn usz! PipeImpl.read(&self, char[] bytes) @dynamic
 	return n;
 }
 
-fn usz! PipeImpl.write(&self, char[] bytes) @dynamic
+fn usz! Pipe.write(&self, char[] bytes) @dynamic
 {
 	self.mu.lock()!;
 	defer (void)self.mu.unlock();
@@ -171,12 +100,12 @@ fn usz! PipeImpl.write(&self, char[] bytes) @dynamic
 	return n;
 }
 
-fn char! PipeImpl.read_byte(&self) @dynamic
+fn char! Pipe.read_byte(&self) @dynamic
 {
 	unsupported();
 }
 
-fn void! PipeImpl.write_byte(&self, char c) @dynamic
+fn void! Pipe.write_byte(&self, char c) @dynamic
 {
 	unsupported();
 }
