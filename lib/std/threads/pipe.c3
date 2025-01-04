@@ -8,17 +8,15 @@ struct Pipe
 	PipeWriter *w;
 }
 
-/*
- * Pipe implements a synchronous in-memory pipe that can be used a concurrency
- * primitives. It provides PipeReader and and PipeWriter that can be used to
- * connect code that expects an OutStream with code that expects an InStream.
- *
- * Reads and writes are matched. There is no internal buffering.
- *
- * Each write to the PipeWriter will block until all data has been consumed by
- * the PipeReader.
- */
-fn void! Pipe.init(&self, Allocator allocator = allocator::heap())
+<*
+ Pipe implements a synchronous in-memory pipe. It provides PipeReader and
+ PipeWriter to connect code which expects an OutStream with one that
+ expects an InStream.
+ 
+ Each write to the PipeWriter will block until all data has been consumed by
+ the PipeReader.
+*>
+fn void! Pipe.new(&self, Allocator allocator = allocator::heap())
 {
 	PipeImpl *pipe = allocator::new(allocator, PipeImpl).init(allocator)!;
 
@@ -31,7 +29,7 @@ fn void! Pipe.init(&self, Allocator allocator = allocator::heap())
 	*self = { pr, pw, };
 }
 
-fn void! Pipe.destroy(&self)
+fn void! Pipe.free(&self)
 {
 	if (!self.r) return;
 	PipeImpl *pipe = self.r.pipe;
@@ -84,15 +82,13 @@ fn void! PipeWriter.close(&self) @dynamic
 	self.r.pipe.close()!;
 }
 
-struct PipeImpl (InStream, OutStream)
+struct PipeImpl (InStream, OutStream) @private
 {
 	Allocator allocator;
 	ByteBuffer buf;
 
-	Mutex wr_mu;
+	Mutex mu;
 	ConditionVariable wr;
-
-	Mutex rd_mu;
 	ConditionVariable rd;
 
 	bool closed;
@@ -104,8 +100,7 @@ fn PipeImpl*! PipeImpl.init(&self, Allocator allocator)
 	self.buf.new_init(256, 64, allocator)!;
 	self.wr.init()!;
 	self.rd.init()!;
-	self.wr_mu.init()!;
-	self.rd_mu.init()!;
+	self.mu.init()!;
 	return self;
 }
 
@@ -114,18 +109,14 @@ fn void! PipeImpl.destroy(&self) @dynamic
 	self.buf.free();
 	self.wr.destroy()!;
 	self.rd.destroy()!;
-	self.rd_mu.destroy()!;
-	self.wr_mu.destroy()!;
+	self.mu.destroy()!;
 	*self = {};
 }
 
 fn void! PipeImpl.close(&self) @dynamic
 {
-	self.rd_mu.lock()!;
-	defer (void)self.rd_mu.unlock();
-
-	self.wr_mu.lock()!;
-	defer (void)self.wr_mu.unlock();
+	self.mu.lock()!;
+	defer (void)self.mu.unlock();
 
 	self.closed = true;
 
@@ -138,21 +129,18 @@ fn void! PipeImpl.close(&self) @dynamic
 *>
 fn usz! PipeImpl.read(&self, char[] bytes) @dynamic
 {
-	self.wr_mu.lock()!;
-	defer (void)self.wr_mu.unlock();
+	self.mu.lock()!;
+	defer (void)self.mu.unlock();
 
 	while (self.buf.available()! == 0 && !self.closed)
 	{
-		self.rd.wait(&self.wr_mu)!; // wait for write to read data
+		self.rd.wait(&self.mu)!; // wait for write to read data
 	}
 
 	if (self.closed && !self.buf.available()!)
 	{
 		return IoError.EOF?;
 	}
-
-	self.rd_mu.lock()!;
-	defer (void)self.rd_mu.unlock();
 
 	usz! n =  self.buf.read(bytes);
 
@@ -163,21 +151,18 @@ fn usz! PipeImpl.read(&self, char[] bytes) @dynamic
 
 fn usz! PipeImpl.write(&self, char[] bytes) @dynamic
 {
-	self.rd_mu.lock()!;
-	defer (void)self.rd_mu.unlock();
+	self.mu.lock()!;
+	defer (void)self.mu.unlock();
 
 	while (self.buf.available()!)
 	{
-		self.wr.wait(&self.rd_mu)!; // wait until read is done for existing data
+		self.wr.wait(&self.mu)!; // wait until read is done for existing data
 	}
 
 	if (self.closed)
 	{
 		return IoError.EOF?;
 	}
-
-	self.wr_mu.lock()!;
-	defer (void)self.wr_mu.unlock();
 
 	usz! n = self.buf.write(bytes);
 
