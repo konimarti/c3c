@@ -1176,7 +1176,7 @@ func_definition
 	| FN func_header fn_parameter_list opt_attributes macro_func_body
 	;
 
-const_declaration
+const_declarationc
 	: CONST CONST_IDENT opt_attributes '=' expr ';'
 	| CONST optional_type CONST_IDENT opt_attributes '=' expr ';'
 	| CONST optional_type CONST_IDENT opt_attributes ';'
