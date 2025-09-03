@@ -7,7 +7,7 @@
 void yyerror(YYLTYPE * yylloc_param , yyscan_t yyscanner, const char *yymsgp);
 %}
 %locations
-%pure-parser
+%define api.pure
 %lex-param {void  *scanner}
 %parse-param {void *scanner}
 
@@ -15,7 +15,7 @@ void yyerror(YYLTYPE * yylloc_param , yyscan_t yyscanner, const char *yymsgp);
 %token TYPE_IDENT CT_TYPE_IDENT
 %token AT_TYPE_IDENT AT_IDENT CT_INCLUDE
 %token STRING_LITERAL INTEGER ALIAS
-%token CT_AND_OP CT_OR_OP CT_CONCAT_OP CT_EXEC
+%token CT_AND_OP CT_OR_OP CT_CONCAT_OP CT_TERNARY_OP CT_EXEC
 %token INC_OP DEC_OP SHL_OP SHR_OP LE_OP GE_OP EQ_OP NE_OP
 %token AND_OP OR_OP MUL_ASSIGN DIV_ASSIGN MOD_ASSIGN ADD_ASSIGN
 %token SUB_ASSIGN SHL_ASSIGN SHR_ASSIGN AND_ASSIGN
@@ -150,9 +150,8 @@ base_expr_assignable
 	;
 
 primary_expr
-	: base_expr
+	: base_expr opt_generic_parameters
 	| initializer_list
-	| base_expr generic_expr
 	;
 
 range_loc
@@ -205,7 +204,7 @@ call_trailing
 	;
 
 call_stmt_expr
-	: base_expr_assignable
+	: base_expr_assignable opt_generic_parameters
 	| call_stmt_expr call_trailing
 	;
 
@@ -368,6 +367,7 @@ suffix_stmt_expr
 ternary_expr
 	: suffix_expr
 	| or_expr '?' expr ':' ternary_expr
+	| or_expr CT_TERNARY_OP expr ':' ternary_expr
 	| suffix_expr ELVIS ternary_expr
 	| suffix_expr OPTELSE ternary_expr
 	| lambda_decl implies_body
@@ -376,6 +376,7 @@ ternary_expr
 ternary_stmt_expr
 	: suffix_stmt_expr
 	| or_stmt_expr '?' expr ':' ternary_expr
+	| or_stmt_expr CT_TERNARY_OP expr ':' ternary_expr
 	| suffix_stmt_expr ELVIS ternary_expr
 	| suffix_stmt_expr OPTELSE ternary_expr
 	| lambda_decl implies_body
@@ -393,9 +394,7 @@ assignment_op
 	| AND_ASSIGN
 	| XOR_ASSIGN
 	| OR_ASSIGN
-	;
-
-empty
+	; empty
 	: /*empty*/
 	;
 
@@ -447,7 +446,8 @@ arg_name
 	| CT_IDENT
 	;
 arg
-	: param_path '=' expr
+	: type IDENT '=' expr
+	| param_path '=' expr
 	| param_path '=' type
 	| param_path
 	| arg_name ':' expr
@@ -998,11 +998,15 @@ attribute_operator_expr
 	: '&' '[' ']'
 	| '[' ']' '='
 	| '[' ']'
+	| additive_op
+	| mult_op
+	| shift_op
+	| relational_op
 	;
 
 attr_param
 	: attribute_operator_expr
-	| constant_expr
+	| assignment_expr
 	;
 
 attribute_param_list
@@ -1083,11 +1087,20 @@ struct_member_decl
 
 enum_spec
 	: ':' base_type_no_generics '(' enum_params ')'
-	| ':' INLINE base_type_no_generics '(' enum_params ')'
+	| ':' enum_spec_qualifiers base_type_no_generics '(' enum_params ')'
         | ':' base_type_no_generics
-        | ':' INLINE base_type_no_generics
+        | ':' enum_spec_qualifiers base_type_no_generics
         | ':' '(' enum_params ')'
 	;
+
+enum_spec_qualifiers
+	: enum_spec_qualifier
+	| enum_spec_qualifier enum_spec_qualifiers
+	;
+
+enum_spec_qualifier
+	: INLINE
+	| CONST
 
 enum_declaration
 	: ENUM TYPE_IDENT opt_interface_impl enum_spec opt_attributes '{' enum_list '}'
