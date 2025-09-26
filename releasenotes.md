@@ -48,6 +48,7 @@
 - Make `LinkedList` printable and add `==` operator. #2438
 - CVaList support on MacOS aarch64, SysV ABI x64.
 - Add `io::skip` and `io::read_le` and `io::write_le` family of functions.
+- Add `string::compare_to` to sort `String[]` (also works for ZString, WString, Char16[], Char32[]).
 
 ## 0.7.5 Change list
 

@@ -383,3 +383,49 @@ fn void test_snake_pascal_self_modify()
 		test::eq(s2, s[1]);
 	}
 }
+
+struct CompareTest
+{
+	String left;
+	String right;
+	int want;
+}
+
+fn void test_compare_to() => @pool()
+{
+	CompareTest[*] test_cases = {
+		{ "", "", 0 },
+		{ "a", "b", -1 },
+		{ "b", "A", 1 },
+		{ "A", "B", -1 },
+		{ "AB", "BB", -1 },
+		{ "abc", "ABC", 1 },
+		{ "abc", "abc", 0 },
+		{ "0abc", "ABC", -1 },
+		{ "😀", "ABC", 1 },
+	};
+
+	int ret;
+	foreach (tc : test_cases)
+	{
+		ret = string::compare_to(tc.left, tc.right);
+		assert(ret == tc.want, "String: %s <=> %s; got: %d",
+			tc.left, tc.right, ret, tc.want);
+
+		ret = string::compare_to(tc.left.zstr_tcopy(), tc.right.zstr_tcopy());
+		assert(ret == tc.want, "ZString: %s <=> %s; got: %d",
+			tc.left, tc.right, ret, tc.want);
+
+		ret = string::compare_to(tc.left.to_temp_wstring()!!, tc.right.to_temp_wstring()!!);
+		assert(ret == tc.want, "WString: %s <=> %s; got: %d",
+			tc.left, tc.right, ret, tc.want);
+
+		ret = string::compare_to(tc.left.to_temp_utf16()!!, tc.right.to_temp_utf16()!!);
+		assert(ret == tc.want, "Char16[]: %s <=> %s; got: %d",
+			tc.left, tc.right, ret, tc.want);
+
+		ret = string::compare_to(tc.left.to_temp_utf32()!!, tc.right.to_temp_utf32()!!);
+		assert(ret == tc.want, "Char32[]: %s <=> %s; got: %d",
+			tc.left, tc.right, ret, tc.want);
+	}
+}

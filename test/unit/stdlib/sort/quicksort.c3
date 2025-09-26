@@ -88,6 +88,38 @@ fn void quicksort_list()
     assert(check::int_sort(list.array_view()));
 }
 
+fn void quicksort_with_strings()
+{
+    String[] str_list = {
+	    "",
+	    "abc",
+	    "ab",
+	    "BCA",
+	    "a",
+	    "😀",
+	    "ABC",
+	    "012abc",
+	    "A",
+    };
+    String[] want = {
+	    "",
+	    "012abc",
+	    "A",
+	    "ABC",
+	    "BCA",
+	    "a",
+	    "ab",
+	    "abc",
+	    "😀",
+    };
+
+    sort::quicksort(str_list);
+    foreach (i, s : str_list)
+    {
+	    assert(s == want[i], "got: %s, want: %s", s, want[i]);
+    }
+}
+
 module sort::check;
 
 fn bool int_sort(int[] list)

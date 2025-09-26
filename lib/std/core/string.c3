@@ -1213,3 +1213,45 @@ fn String? Splitter.next(&self)
 		return remaining;
 	}
 }
+
+<*
+ Compares two strings based on their numerical (ASCII) values.
+
+ Return -1 if left-hand side is smaller, 1 if it is larger and 0 if both
+ strings are equal.
+
+ @param [in] lhs : `Left-hand string`
+ @param [in] rhs : `Right-hand string`
+*>
+macro int compare_to(lhs, rhs)
+{
+	usz i, lhs_len, rhs_len;
+	lhs_len = str_len(lhs);
+	rhs_len = str_len(rhs);
+	while (i < lhs_len && i < rhs_len)
+	{
+		if (lhs[i] < rhs[i]) return -1;
+		if (lhs[i] > rhs[i]) return 1;
+		i++;
+	}
+	if (lhs_len < rhs_len) return -1;
+	if (lhs_len > rhs_len) return 1;
+	return 0;
+}
+
+macro usz str_len(s) @private
+{
+	$if $defined(s.ptr):
+		return s.len;
+	$else
+		return s.len();
+	$endif
+}
+
+macro int String.compare_to(&self, rhs)   => compare_to(*self, rhs);
+macro int ZString.compare_to(&self, rhs)  => compare_to(*self, rhs);
+macro int WString.compare_to(&self, rhs)  => compare_to(*self, rhs);
+macro int Char16[].compare_to(&self, rhs) => compare_to(*self, rhs);
+macro int Char32[].compare_to(&self, rhs) => compare_to(*self, rhs);
+
+
