@@ -392,6 +392,11 @@ jobs:
           cd test
           ../build/c3c compile-run -O1 src/test_suite_runner.c3 -- ../build/c3c  test_suite/
 
+      - name: run single compiler test standalone
+        run: |
+          cd test
+          ../build/c3c compile-run src/test_suite_runner.c3 -- ../build/c3c test_suite/abi/linux_x64_test.c3t
+
       - name: bundle_output
         if: matrix.llvm_version == env.LLVM_RELEASE_VERSION_LINUX
         run: |
