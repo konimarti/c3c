@@ -99,7 +99,7 @@ fn int main(String[] args)
 
 	Path? file = args[2].to_tpath().absolute(tmem);
 	if (catch file) arg_error_exit(appname, "Invalid path: '%s'.", args[2]);
-	
+
 	PathList files_to_test;
 	files_to_test.init(tmem);
 	//defer files_to_test.free();
@@ -569,7 +569,10 @@ fn bool test_file(Path file_path, TestOutput* output, usz index)
 	CInt result = compilation.join() ?? 1;
 	DString out;
 	io::copy_to(&&compilation.stderr(), &out)!!;
-	if (result != 0 && result != 1)
+	usz nerrors;
+	foreach (fptr: settings.input_files) nerrors += fptr.ptr.errors.len();
+	bool success = result == 0 || (result == 1 && nerrors > 0) || (result != 1);
+	if (!success)
 	{
 		(void)io::copy_to(&&compilation.stdout(), (OutStream)&out);
 		io::fprintfn((OutStream)&output.buffer, "FAILED - Error(%s): %s", result, out)!!;
