@@ -648,11 +648,11 @@ fn char[]? ZipArchive.read_file_all(&self, Allocator allocator, String filename,
 		case DEFLATE:
 			if (reader.adapter.start_offset > (ulong)isz.max) return io::OVERFLOW~;
 			self.file.set_cursor(reader.adapter.start_offset)!;
-			if (entry.compressed_size > (ulong)usz.max) return io::OVERFLOW~;
-			char[] compressed = allocator::alloc_array(allocator, char, (usz)entry.compressed_size);
+			if (reader.adapter.size > (ulong)usz.max) return io::OVERFLOW~;
+			char[] compressed = allocator::alloc_array(allocator, char, (usz)reader.adapter.size);
 			defer allocator::free(allocator, compressed);
-			self.file.read(compressed)!;
-			data = deflate::decompress(allocator, compressed)!;
+			usz n = self.file.read(compressed)!;
+			data = deflate::decompress(allocator, compressed[:n])!;
 		default:
 			return io::UNSUPPORTED_OPERATION~;
 	}
@@ -910,7 +910,7 @@ fn ZipEntryReader? ZipArchive.open_reader(&self, String filename, String passwor
 
 		reader.adapter.aex = aex_version;
 		reader.adapter.start_offset += (ulong)salt_len + 2;
-		reader.adapter.size -= (ulong)salt_len + 2 + 10;
+		if (entry.method != STORE) reader.adapter.size -= (ulong)salt_len + 2 + 10;
 		reader.method = (ZipMethod)aex_method;
 	}
 
