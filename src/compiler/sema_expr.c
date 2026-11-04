@@ -5768,6 +5768,16 @@ static bool sema_expr_analyse_reflection_access(SemaContext *context, Expr *expr
 		expr_replace(expr, init_expr);
 		return true;
 	}
+	if (name == kw_doc && is_param)
+	{
+		const char *doc = "";
+		FOREACH_REF(ContractParam, p, member->docs ? declptr(member->docs)->contracts_decl.params : NULL)
+		{
+			if (p->name == member->name && p->description) doc = p->description;
+		}
+		expr_rewrite_const_string_from_raw(expr, doc);
+		return true;
+	}
 	bool normal_storage = sema_resolve_storage_type(context, type) == STORAGE_NORMAL;
 	if (normal_storage && name == kw_is_ordered) return sema_expr_rewrite_to_is_ordered(context, expr, type);
 	if (normal_storage && name == kw_has_equals) return sema_expr_rewrite_to_has_equals(context, expr, type);
