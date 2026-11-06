@@ -486,6 +486,7 @@ typedef struct VarDecl_
 	bool copy_const : 1;
 	bool defaulted : 1;
 	bool safe_infer : 1;
+	const char *param_desc;
 	union
 	{
 		Expr *init_expr;
@@ -2244,7 +2245,6 @@ extern const char *kw_cname;
 extern const char *kw_compiler_rt;
 extern const char *kw_description;
 extern const char *kw_default_value;
-extern const char *kw_doc;
 extern const char *kw_drop;
 extern const char *kw_excuse;
 extern const char *kw_generic_args;
@@ -2270,6 +2270,7 @@ extern const char *kw_memcmp;
 extern const char *kw_name;
 extern const char *kw_offset;
 extern const char *kw_ordinal;
+extern const char *kw_param;
 extern const char *kw_out;
 extern const char *kw_own;
 extern const char *kw_param_struct;
