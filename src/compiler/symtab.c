@@ -241,7 +241,7 @@ void symtab_init(uint32_t capacity)
 	type_property_list[TYPE_PROPERTY_PARENT] = KW_DEF("parent");
 	type_property_list[TYPE_PROPERTY_QNAME] = kw_qname;
 	type_property_list[TYPE_PROPERTY_DOC] = KW_DEF("doc");
-	type_property_list[TYPE_PROPERTY_RESULT] = KW_DEF("result");
+	type_property_list[TYPE_PROPERTY_RETURN_DOC] = KW_DEF("return_doc");
 	type_property_list[TYPE_PROPERTY_RETURNS] = KW_DEF("returns");
 	type_property_list[TYPE_PROPERTY_SIZE] = kw_size;
 	type_property_list[TYPE_PROPERTY_TAGS] = kw_tags;

@@ -18,7 +18,7 @@
 - Disallow `{ .a = 1, .a = 1 }`. #3579
 - Add better instantiation error output.
 - Reflected parameters have a `.param` property returning the `@param` description. #3618
-- Function pointer types have `::doc` (the doc comment text) and `::result` (the `@return` description) compile-time properties. #3618
+- Function pointer types have `::doc` (the doc comment text) and `::return_doc` (the `@return` description) compile-time properties. #3618
 - Implicitly converting a negative constant to a wider unsigned type, e.g. `ulong x = -1;`, is now correctly an error.
 - Improved the error when implicitly casting an enum to an integer, it now points to the explicit cast.
 - Casting a non-constant integer larger than a pointer, e.g. an `int128`, to a pointer is now an error. Cast it to `uptr` first.

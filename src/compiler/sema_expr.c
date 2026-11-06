@@ -6453,7 +6453,7 @@ static bool sema_expr_rewrite_to_typeid_property(SemaContext *context, Expr *exp
 		case TYPE_PROPERTY_NAME:
 		case TYPE_PROPERTY_NAN:
 		case TYPE_PROPERTY_DOC:
-		case TYPE_PROPERTY_RESULT:
+		case TYPE_PROPERTY_RETURN_DOC:
 		case TYPE_PROPERTY_PARAMS:
 		case TYPE_PROPERTY_PARAM_STRUCT:
 		case TYPE_PROPERTY_QNAME:
@@ -6720,7 +6720,7 @@ static bool sema_type_property_is_valid_for_type(CanonicalType *original_type, T
 					return true;
 			}
 		case TYPE_PROPERTY_DOC:
-		case TYPE_PROPERTY_RESULT:
+		case TYPE_PROPERTY_RETURN_DOC:
 		case TYPE_PROPERTY_PARAMS:
 		case TYPE_PROPERTY_PARAM_STRUCT:
 		case TYPE_PROPERTY_RETURNS:
@@ -6817,7 +6817,7 @@ static bool sema_expr_rewrite_to_type_property(SemaContext *context, Expr *expr,
 		case TYPE_PROPERTY_METHODS:
 			return sema_create_const_methodsof(context, expr, type);
 		case TYPE_PROPERTY_DOC:
-		case TYPE_PROPERTY_RESULT:
+		case TYPE_PROPERTY_RETURN_DOC:
 		{
 			Decl *fn = flat->pointer->function.decl;
 			Decl *contracts = fn && fn->docs ? declptr(fn->docs) : NULL;

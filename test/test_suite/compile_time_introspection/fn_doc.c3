@@ -14,9 +14,9 @@ fn void textonly() {}
 fn void main()
 {
 	$assert $Typeof(&add)::doc == "Adds two numbers.";
-	$assert $Typeof(&add)::result == "the sum";
+	$assert $Typeof(&add)::return_doc == "the sum";
 	$assert $Typeof(&nodoc)::doc == "";
-	$assert $Typeof(&nodoc)::result == "";
+	$assert $Typeof(&nodoc)::return_doc == "";
 	$assert $Typeof(&textonly)::doc == "Only text.";
-	$assert $Typeof(&textonly)::result == "";
+	$assert $Typeof(&textonly)::return_doc == "";
 }
