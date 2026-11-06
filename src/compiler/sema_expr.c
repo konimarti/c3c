@@ -6452,6 +6452,8 @@ static bool sema_expr_rewrite_to_typeid_property(SemaContext *context, Expr *exp
 		case TYPE_PROPERTY_MIN:
 		case TYPE_PROPERTY_NAME:
 		case TYPE_PROPERTY_NAN:
+		case TYPE_PROPERTY_DOC:
+		case TYPE_PROPERTY_RESULT:
 		case TYPE_PROPERTY_PARAMS:
 		case TYPE_PROPERTY_PARAM_STRUCT:
 		case TYPE_PROPERTY_QNAME:
@@ -6717,6 +6719,8 @@ static bool sema_type_property_is_valid_for_type(CanonicalType *original_type, T
 				default:
 					return true;
 			}
+		case TYPE_PROPERTY_DOC:
+		case TYPE_PROPERTY_RESULT:
 		case TYPE_PROPERTY_PARAMS:
 		case TYPE_PROPERTY_PARAM_STRUCT:
 		case TYPE_PROPERTY_RETURNS:
@@ -6812,6 +6816,16 @@ static bool sema_expr_rewrite_to_type_property(SemaContext *context, Expr *expr,
 		}
 		case TYPE_PROPERTY_METHODS:
 			return sema_create_const_methodsof(context, expr, type);
+		case TYPE_PROPERTY_DOC:
+		case TYPE_PROPERTY_RESULT:
+		{
+			Decl *fn = flat->pointer->function.decl;
+			Decl *contracts = fn && fn->docs ? declptr(fn->docs) : NULL;
+			const char *str = NULL;
+			if (contracts) str = property == TYPE_PROPERTY_DOC ? contracts->contracts_decl.comment : contracts->contracts_decl.return_desc;
+			expr_rewrite_const_string_from_raw(expr, str ? str : "");
+			return true;
+		}
 		case TYPE_PROPERTY_PARAMS:
 			return sema_create_const_type_params(expr, flat);
 		case TYPE_PROPERTY_PARAM_STRUCT:
