@@ -5768,9 +5768,9 @@ static bool sema_expr_analyse_reflection_access(SemaContext *context, Expr *expr
 		expr_replace(expr, init_expr);
 		return true;
 	}
-	if (name == kw_param && is_param)
+	if (name == kw_doc && is_param)
 	{
-		expr_rewrite_const_string_from_raw(expr, member->var.param_desc ? member->var.param_desc : "");
+		expr_rewrite_const_string_from_raw(expr, member->var.doc ? member->var.doc : "");
 		return true;
 	}
 	bool normal_storage = sema_resolve_storage_type(context, type) == STORAGE_NORMAL;
@@ -6738,6 +6738,29 @@ static bool sema_type_property_is_valid_for_type(CanonicalType *original_type, T
 	UNREACHABLE
 }
 
+// Trim the doc text, also stripping leading and trailing whitespace on each line.
+static const char *sema_trim_doc_text(const char *str)
+{
+	char *out = calloc_arena(strlen(str) + 1);
+	char *dst = out;
+	const char *p = str;
+	while (true)
+	{
+		const char *end = strchr(p, '\n');
+		if (!end) end = p + strlen(p);
+		const char *line_end = end;
+		while (p < line_end && (*p == ' ' || *p == '\t' || *p == '\r')) p++;
+		while (line_end > p && (line_end[-1] == ' ' || line_end[-1] == '\t' || line_end[-1] == '\r')) line_end--;
+		memcpy(dst, p, line_end - p);
+		dst += line_end - p;
+		if (!*end) break;
+		*dst++ = '\n';
+		p = end + 1;
+	}
+	*dst = 0;
+	return str_trim(out);
+}
+
 static bool sema_expr_rewrite_to_type_property(SemaContext *context, Expr *expr, Type *type, TypeProperty property,
 											   Type *parent_type)
 {
@@ -6823,6 +6846,7 @@ static bool sema_expr_rewrite_to_type_property(SemaContext *context, Expr *expr,
 			Decl *contracts = fn && fn->docs ? declptr(fn->docs) : NULL;
 			const char *str = NULL;
 			if (contracts) str = property == TYPE_PROPERTY_DOC ? contracts->contracts_decl.comment : contracts->contracts_decl.return_desc;
+			if (str) str = sema_trim_doc_text(str);
 			expr_rewrite_const_string_from_raw(expr, str ? str : "");
 			return true;
 		}

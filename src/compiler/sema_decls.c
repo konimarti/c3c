@@ -4176,7 +4176,7 @@ static inline bool sema_analyse_doc_header(SemaContext *context, DeclId docs,
 		{
 			RETURN_SEMA_ERROR(param_contract, "There is no parameter '%s', did you misspell it?", param_contract->name);
 		}
-		param->var.param_desc = param_contract->description;
+		param->var.doc = param_contract->description;
 		Type *type = param->type;
 		if (type) type = type_flatten(type);
 		bool may_be_pointer = !type || type_is_pointer(type) || type_is_any_raw(type);
