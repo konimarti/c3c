@@ -1,13 +1,5 @@
 #include "lib.h"
 
-typedef struct
-{
-	uint32_t state[8];
-	uint8_t block[64];
-	size_t block_len;
-	uint64_t total_len;
-} Sha256;
-
 static const uint32_t sha256_k[64] = {
 	0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
 	0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
@@ -21,7 +13,7 @@ static const uint32_t sha256_k[64] = {
 
 #define ROTR(x_, n_) (((x_) >> (n_)) | ((x_) << (32 - (n_))))
 
-static void sha256_init(Sha256 *ctx)
+void sha256_init(Sha256 *ctx)
 {
 	*ctx = (Sha256) { .state = { 0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a,
 								 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19 } };
@@ -54,7 +46,7 @@ static void sha256_block(Sha256 *ctx, const uint8_t *p)
 	ctx->state[4] += e; ctx->state[5] += f; ctx->state[6] += g; ctx->state[7] += h;
 }
 
-static void sha256_update(Sha256 *ctx, const uint8_t *data, size_t len)
+void sha256_update(Sha256 *ctx, const uint8_t *data, size_t len)
 {
 	ctx->total_len += len;
 	while (len)
@@ -74,7 +66,7 @@ static void sha256_update(Sha256 *ctx, const uint8_t *data, size_t len)
 }
 
 // Pad the message and return the digest as 64 lowercase hex characters.
-static const char *sha256_final_hex(Sha256 *ctx)
+const char *sha256_final_hex(Sha256 *ctx)
 {
 	uint64_t bits = ctx->total_len * 8;
 	uint8_t pad[72] = { 0x80 };

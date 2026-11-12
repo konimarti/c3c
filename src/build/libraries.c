@@ -307,22 +307,50 @@ JSONObject *read_library_manifest_for_path(const char *lib_path, const char **ma
 	return manifest;
 }
 
+// What the manifest of the library at `lib_path` provides, or NULL with the reason in `error`.
+static const char *library_provides(const char *lib_path, const char **error)
+{
+	const char *manifest_path;
+	JSONObject *manifest = load_library_manifest(lib_path, error, &manifest_path);
+	if (*error) return NULL;
+	if (!manifest)
+	{
+		*error = "the library has no manifest";
+		return NULL;
+	}
+	JSONObject *provides = manifest->type == J_OBJECT ? json_map_get(manifest, "provides") : NULL;
+	if (!provides || provides->type != J_STRING)
+	{
+		*error = "the library manifest has no 'provides'";
+		return NULL;
+	}
+	return provides->str;
+}
+
 // The library at `lib_path` must have a manifest that provides `name`.
 static const char *verify_library_provides(const char *lib_path, const char *name)
 {
-	const char *manifest_path;
 	const char *error;
-	JSONObject *manifest = load_library_manifest(lib_path, &error, &manifest_path);
+	const char *provides = library_provides(lib_path, &error);
 	if (error) return error;
-	if (!manifest) return "the library has no manifest";
-	JSONObject *provides = manifest->type == J_OBJECT ? json_map_get(manifest, "provides") : NULL;
-	if (!provides || provides->type != J_STRING) return "the library manifest has no 'provides'";
-	if (!str_eq(provides->str, name)) return str_printf("the library provides '%s', not '%s'", provides->str, name);
+	if (!str_eq(provides, name)) return str_printf("the library provides '%s', not '%s'", provides, name);
 	return NULL;
 }
 
-// Unpack the library files into `dir`, skipping empty entries and dotfiles. Returns an error string or NULL.
-static const char *unpack_zip(FILE *f, const char *dir)
+// True if any segment of the path starts with '.'.
+static bool path_has_dot_segment(const char *path)
+{
+	for (const char *c = path; *c; c++)
+	{
+		if (*c == '.' && (c == path || c[-1] == '/')) return true;
+	}
+	return false;
+}
+
+// Unpack the library files into `dir`, skipping directories and dotfiles. Returns an error string or NULL.
+// With a `prefix` (the directory of a source archive) the files are unpacked without it, and no path
+// with a dot segment is.
+static const char *unpack_zip(FILE *f, const char *dir, const char *prefix)
 {
 	ZipDirIterator iterator;
 	ZipFile file;
@@ -331,7 +359,13 @@ static const char *unpack_zip(FILE *f, const char *dir)
 	{
 		error = zip_dir_iterator_next(&iterator, &file);
 		if (error) break;
-		if (!file.uncompressed_size || file.name[0] == '.') continue;
+		if (file.name[strlen(file.name) - 1] == '/') continue;
+		if (prefix)
+		{
+			memmove(file.name, file.name + strlen(prefix), strlen(file.name + strlen(prefix)) + 1);
+			if (path_has_dot_segment(file.name)) continue;
+		}
+		else if (file.name[0] == '.') continue;
 		if (strstr(file.name, "..")) return "the library contains an invalid file path";
 		error = zip_file_write(f, &file, dir, false);
 	}
@@ -386,7 +420,7 @@ static inline JSONObject *resolve_zip_library(BuildTarget *build_target, const c
 	}
 	dir_make_recursive(lib_dir_copy);
 
-	zip_check_err(lib, unpack_zip(f, lib_dir));
+	zip_check_err(lib, unpack_zip(f, lib_dir, NULL));
 DONE:
 	fclose(f);
 	char buf[64];
@@ -402,7 +436,7 @@ static const char *unpack_c3l(const char *zip_path, const char *dest_dir)
 	FILE *f = fopen(zip_path, "rb");
 	if (!f) return "Failed to open the downloaded library";
 	dir_make(dest_dir);
-	const char *error = unpack_zip(f, dest_dir);
+	const char *error = unpack_zip(f, dest_dir, NULL);
 	fclose(f);
 	if (error) return error;
 	return file_exists(file_append_path(dest_dir, MANIFEST_FILE)) ? NULL : "the library has no manifest";
@@ -1053,12 +1087,195 @@ static const char *vendor_fetch_single(const char* lib, const char* path, bool p
 	return download_library("https://github.com", resource, destination, progress, decompress, NULL, NULL);
 }
 
+// A file of a zip downloaded from a git host.
+typedef struct
+{
+	ZipFile file;
+	const char *name; // The path in the library.
+} GitFile;
+
+static int git_file_compare(const void *a, const void *b)
+{
+	return strcmp(((const GitFile *)a)->name, ((const GitFile *)b)->name);
+}
+
+// A path that is absolute, goes up or leaves the directory it is unpacked into.
+static bool is_unsafe_zip_path(const char *path)
+{
+	if (!*path || strchr(path, '\\') || strchr(path, ':') || path[0] == '/') return true;
+	for (const char *c = path; *c; c++)
+	{
+		if (c[0] == '.' && c[1] == '.' && (c == path || c[-1] == '/') && (!c[2] || c[2] == '/')) return true;
+	}
+	return false;
+}
+
+// Check a zip downloaded from a git host and get its content hash: sha256 over its files (not the directories)
+// sorted by path, each as the path, a 0 byte, the size as 8 bytes little-endian and the contents.
+// A source archive must have a single top-level directory, which is not part of the paths.
+// `files` gets the files sorted by path, and `prefix` the directory that was stripped.
+static const char *git_scan_zip(FILE *f, const char **prefix, GitFile **files, const char **hash)
+{
+	ZipDirIterator iterator;
+	const char *error = zip_dir_iterator(f, &iterator);
+	if (error) return error;
+	*prefix = "";
+	*files = NULL;
+	while (iterator.current_file < iterator.files)
+	{
+		GitFile entry;
+		error = zip_dir_iterator_next(&iterator, &entry.file);
+		if (error) return error;
+		const char *name = entry.file.name;
+		if (is_unsafe_zip_path(name)) return str_printf("the zip contains an invalid file path '%s'", name);
+		const char *slash = strchr(name, '/');
+		if (!slash || (slash == name + 1 && name[0] == '.')) return "the source archive must contain exactly one top-level directory";
+		if (!**prefix) *prefix = str_copy(name, slash - name + 1);
+		if (!str_start_with(name, *prefix)) return "the source archive must contain exactly one top-level directory";
+		if (name[strlen(name) - 1] == '/') continue;
+		entry.name = str_dup(name + strlen(*prefix));
+		vec_add(*files, entry);
+	}
+	if (!**prefix) return "the source archive is empty";
+	qsort(*files, vec_size(*files), sizeof(GitFile), git_file_compare);
+	bool manifest = false;
+	Sha256 sha;
+	sha256_init(&sha);
+	FOREACH_REF(GitFile, file, *files)
+	{
+		if (file > *files && str_eq(file->name, file[-1].name)) return str_printf("the zip contains '%s' twice", file->name);
+		if (str_eq(file->name, MANIFEST_FILE)) manifest = true;
+		void *data;
+		error = zip_file_read(f, &file->file, &data);
+		if (error) return error;
+		uint8_t size[8];
+		for (int i = 0; i < 8; i++) size[i] = (uint8_t)((uint64_t)file->file.uncompressed_size >> (8 * i));
+		sha256_update(&sha, (const uint8_t *)file->name, strlen(file->name) + 1);
+		sha256_update(&sha, size, 8);
+		sha256_update(&sha, data, file->file.uncompressed_size);
+	}
+	if (!manifest) return "the library has no " MANIFEST_FILE " at its root";
+	*hash = sha256_final_hex(&sha);
+	return NULL;
+}
+
+// Write the files of a source archive to a new zip, without the dot paths, as unpacking would.
+static const char *git_repack(FILE *f, GitFile *files, const char *destination)
+{
+	ZipEntry *entries = NULL;
+	FOREACH_REF(GitFile, file, files)
+	{
+		if (path_has_dot_segment(file->name)) continue;
+		void *data;
+		const char *error = zip_file_read(f, &file->file, &data);
+		if (error) return error;
+		ZipEntry entry = { .name = file->name, .data = data, .size = file->file.uncompressed_size };
+		vec_add(entries, entry);
+	}
+	return zip_create(destination, entries, vec_size(entries));
+}
+
+// The URL of the source archive of `ref` (HEAD if none) of the repository of a git+https library.
+static const char *git_archive_url(BuildOptions *options, LibraryPathInfo *dependency)
+{
+	const char *location = dependency->url + strlen("git+https://");
+	const char *slash = strchr(location, '/');
+	const char *host = str_copy(location, slash - location);
+	const char *repo = slash + 1;
+	const char *base = options->git_base_url ? str_printf("%s/%s", options->git_base_url, host) : str_printf("https://%s", host);
+	const char *ref = dependency->version ? dependency->version : "HEAD";
+	if (find_git_host(host)->archive == ARCHIVE_GITLAB)
+	{
+		return str_printf("%s/%s/-/archive/%s/%s-%s.zip", base, repo, ref, strrchr(repo, '/') + 1, ref);
+	}
+	return str_printf("%s/%s/archive/%s.zip", base, repo, ref);
+}
+
+// Fetch a git+https library as <path>/<name>.c3l from the source archive of its ref. The name is what the library
+// provides, which must be the one given if there is one. A checksum must match the content hash of the
+// archive. On success the name is set, and the checksum is the content hash unless the ref is not pinned.
+static const char *git_fetch_single(BuildOptions *options, LibraryPathInfo *dependency, const char *path, bool progress)
+{
+	bool pinned = dependency->version && !str_eq(dependency->version, "HEAD");
+	if (!pinned) puts("Warning: not pinned, the library follows the default branch.");
+	dir_make_recursive(str_dup(path));
+	const char *stage_dir = dir_make_temp_dir_in(path);
+	if (!stage_dir) return "Failed to create a temporary directory for the library";
+	const char *zip_path = file_append_path(stage_dir, "library.c3l");
+	const char *result = zip_path;
+	const char *url = git_archive_url(options, dependency);
+	const char *error = download_file(url, "", zip_path, progress);
+	if (error)
+	{
+		error = str_printf("failed to download %s: %s", url, error);
+		goto END;
+	}
+	FILE *f = fopen(zip_path, "rb");
+	if (!f)
+	{
+		error = "Failed to open the downloaded library";
+		goto END;
+	}
+	const char *prefix;
+	const char *hash;
+	GitFile *files;
+	error = git_scan_zip(f, &prefix, &files, &hash);
+	if (!error && dependency->checksum && !hex_equals(hash, dependency->checksum))
+	{
+		error = str_printf("content hash mismatch (expected %s, got %s)", dependency->checksum, hash);
+	}
+	if (!error && options->fetch_compressed)
+	{
+		result = file_append_path(stage_dir, "repacked.c3l");
+		error = git_repack(f, files, result);
+	}
+	else if (!error)
+	{
+		result = file_append_path(stage_dir, "library");
+		dir_make(result);
+		error = unpack_zip(f, result, prefix);
+	}
+	fclose(f);
+	if (error) goto END;
+	const char *provides = library_provides(result, &error);
+	if (error) goto END;
+	if (dependency->name && !str_eq(provides, dependency->name))
+	{
+		error = str_printf("the library provides '%s', not '%s'", provides, dependency->name);
+		goto END;
+	}
+	if (!str_is_valid_lowercase_name(provides))
+	{
+		error = str_printf("the library provides '%s', which is not a valid library name", provides);
+		goto END;
+	}
+	dependency->name = provides;
+	dependency->id = str_printf("%s/%s", git_namespace(dependency->url), provides);
+	if (!file_replace(result, file_append_path(path, str_printf("%s.c3l", provides))))
+	{
+		error = "Failed to replace the existing library";
+		goto END;
+	}
+	if (pinned)
+	{
+		dependency->checksum = hash;
+		printf("pin: %s\n", library_path_info_to_string(dependency));
+	}
+	else
+	{
+		printf("content hash: %s\n", hash);
+	}
+END:
+	file_delete_dir(stage_dir);
+	return error;
+}
+
 // Fetch a registry library as <path>/<name>.c3l: the version of the dependency (the latest if it has
 // none) from the registry of the dependency (the default one if it has none).
 // A dependency with a checksum must have a version, and match the checksum.
 const char *registry_fetch_single(BuildOptions *options, LibraryPathInfo *dependency, const char *path, bool progress)
 {
-	if (dependency->git) return "fetching git+https libraries is not supported yet";
+	if (dependency->git) return git_fetch_single(options, dependency, path, progress);
 	const char *prefixed_checksum_req = dependency->checksum ? str_cat("sha256:", dependency->checksum) : NULL;
 	const char *base = dependency->url ? dependency->url : registry_url(options);
 	LibraryInfo info;

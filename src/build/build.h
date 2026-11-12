@@ -236,6 +236,7 @@ typedef struct BuildOptions_
 	const char *search_name;
 	const char *search_tag;
 	const char *fetch_url;
+	const char *git_base_url;
 	const char **vendor_libraries_to_fetch;
 	const char **libraries_to_fetch;
 	const char **files;

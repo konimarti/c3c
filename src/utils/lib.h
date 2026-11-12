@@ -16,6 +16,17 @@ const char *download_file(const char *url, const char *resource, const char *fil
 bool download_available(void);
 
 // SHA-256 as 64 lowercase hex characters. The file version returns NULL if the file can't be read.
+typedef struct
+{
+	uint32_t state[8];
+	uint8_t block[64];
+	size_t block_len;
+	uint64_t total_len;
+} Sha256;
+
+void sha256_init(Sha256 *ctx);
+void sha256_update(Sha256 *ctx, const uint8_t *data, size_t len);
+const char *sha256_final_hex(Sha256 *ctx);
 const char *sha256_hex(const void *data, size_t len);
 const char *sha256_file_hex(const char *path);
 bool hex_equals(const char *a, const char *b);

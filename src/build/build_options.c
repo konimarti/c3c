@@ -1112,6 +1112,12 @@ static void parse_option(BuildOptions *options) // NOLINT
 				options->fetch_url = next_arg();
 				return;
 			}
+			if (match_longopt("git-base-url"))
+			{
+				if (at_end() || next_is_opt()) FAIL_WITH_ERR_LONG("'--git-base-url' expected a URL.");
+				options->git_base_url = next_arg();
+				return;
+			}
 			if ((argopt = match_argopt("decompress"))) // NOLINT
 			{
 				options->fetch_compressed = !parse_opt_select(bool, argopt, on_off);
