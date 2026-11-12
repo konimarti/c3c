@@ -1356,8 +1356,9 @@ void fetch_lib(BuildOptions *options, bool is_vendor, const char **libraries_to_
 			printf("Fetching library '%s'...\n", lib);
 			(void)fflush(stdout);
 			error = registry_fetch_single(options, &library, options->vendor_download_path, ansi);
-			// The project only lists the name: where it came from is up to the user to write down.
-			recorded = library.name;
+			// A registry library is listed by its name, where it came from is up to the user to write down.
+			// A git+https one needs its path to be fetched again, with the content hash if its ref is pinned.
+			if (!error) recorded = library.git ? library_path_info_to_string(&library) : library.name;
 		}
 		if (!error)
 		{

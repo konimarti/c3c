@@ -508,7 +508,8 @@ void fetch_project(BuildOptions* options)
 	}
 }
 
-// Add the library names to "dependencies", unless there already is a dependency with that name.
+// Add the library names or paths to "dependencies". A dependency with that name is kept, unless the new entry is
+// a path: it replaces the old one, so that a pin stays current.
 void add_libraries_to_project_file(const char** libs)
 {
 	if (!vec_size(libs)) return;
@@ -532,9 +533,12 @@ void add_libraries_to_project_file(const char** libs)
 
 	FOREACH(const char*, lib, libs)
 	{
-		FOREACH(const char *, dependency, dependencies)
+		LibraryPathInfo added = parse_library_path(lib);
+		FOREACH_IDX(i, const char *, dependency, dependencies)
 		{
-			if (str_eq(parse_library_path(dependency).name, lib)) goto NEXT;
+			if (!str_eq(parse_library_path(dependency).name, added.name)) continue;
+			if (added.git) dependencies[i] = lib;
+			goto NEXT;
 		}
 		vec_add(dependencies, lib);
 		NEXT:;
