@@ -27,7 +27,7 @@ const char *project_default_keys[][2] = {
 		{"env", "Environment variables (NAME=value) set for the 'exec' scripts of all targets."},
 		{"exec", "Scripts run for all targets."},
 		{"features", "Features enabled for all targets."},
-		{"fetch-url", "Registry that 'dependencies' written as <namespace>/<name>[@<version>] are fetched from, --fetch-url overrides it. A dependency can name its own registry with <url>:<namespace>/<name>[@<version>]."},
+		{"fetch-url", "Registry that 'dependencies' written as <namespace>/<name>[@<version>] are fetched from, --fetch-url overrides it. A dependency can name its own registry with <url>:<namespace>/<name>[@<version>], or be fetched from a git repository with git+https://<host>/<repo path>:<namespace>/<name>[@<version>][:<content hash>] (github.com, codeberg.org, gitlab.com)."},
 		{"fp-math", "Set math behaviour: `strict`, `relaxed` or `fast`."},
 		{"function-sections", "Place each function in its own section, so the linker can discard unused ones (no effect on Mach-O)."},
 		{"implicit-float", "Allow implicit use of floating point instructions. (default: true)"},

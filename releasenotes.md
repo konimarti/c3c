@@ -5,6 +5,7 @@
 ### Changes / improvements
 - A `case` after `default` is now an error in switches that are evaluated as an if-chain, since it cannot be reached.
 - `@const` macros may no longer return `void?`.
+- `fetch` and `project fetch` accept git repositories as the `<url>` of a library path, `git+https://<host>/<repo path>:<namespace>/<name>[@<version>][:<hash>]`, for github.com, codeberg.org and gitlab.com: the source archive of the version (a tag, branch or commit) is downloaded. `c3c fetch git+https://<host>/<repo path>[@<version>]` finds the name in the library and records the full path, with the content hash, in `dependencies`. The content hash does not depend on how the host wrote the zip.
 
 ### Fixes
 - `nextcase x` in a `@jump` switch read `x` after the defers of the case had run.
