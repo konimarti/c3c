@@ -1,5 +1,6 @@
 #include "build_internal.h"
 #include "compiler/compiler_internal.h"
+#include <ctype.h>
 
 #define MANIFEST_FILE "manifest.json"
 
@@ -452,9 +453,121 @@ static bool is_valid_scheme(const char *url)
 	return str_start_with(url, "http://") || str_start_with(url, "https://"); // NOLINT
 }
 
+typedef enum
+{
+	ARCHIVE_SLASH_ARCHIVE,  // <repo>/archive/<ref>.zip
+	ARCHIVE_GITLAB,         // <repo>/-/archive/<ref>/<last segment>-<ref>.zip
+} GitArchiveKind;
+
+typedef struct
+{
+	const char *host;
+	GitArchiveKind archive;
+	int min_segments;
+	int max_segments;
+} GitHost;
+
+// The hosts that git+https libraries can be fetched from, the only host specific code.
+static const GitHost git_hosts[] = {
+	{ "github.com", ARCHIVE_SLASH_ARCHIVE, 2, 2 },
+	{ "codeberg.org", ARCHIVE_SLASH_ARCHIVE, 2, 2 },
+	{ "gitlab.com", ARCHIVE_GITLAB, 2, 100 },
+};
+
+static const GitHost *find_git_host(const char *host)
+{
+	for (size_t i = 0; i < sizeof(git_hosts) / sizeof(git_hosts[0]); i++)
+	{
+		if (str_eq(host, git_hosts[i].host)) return &git_hosts[i];
+	}
+	return NULL;
+}
+
+// A name for the message about a missing one: "toml.c3l" -> "toml", "My-Lib" -> "my_lib".
+static const char *guess_library_name(const char *repo_path)
+{
+	const char *last = strrchr(repo_path, '/');
+	last = last ? last + 1 : repo_path;
+	size_t len = strlen(last);
+	if (len > 4 && str_eq(last + len - 4, ".c3l")) len -= 4;
+	else if (len > 3 && str_eq(last + len - 3, ".c3")) len -= 3;
+	scratch_buffer_clear();
+	for (size_t i = 0; i < len; i++)
+	{
+		char c = last[i];
+		scratch_buffer_append_char(c == '-' ? '_' : (char)tolower(c));
+	}
+	return scratch_buffer_copy();
+}
+
+// The part of "git+https://<host>/<repo path>" after the host.
+static const char *git_repo_path(const char *url)
+{
+	return strchr(url + strlen("git+https://"), '/') + 1;
+}
+
+// The namespace of a repository: its path without the last segment.
+static const char *git_namespace(const char *url)
+{
+	const char *repo = git_repo_path(url);
+	return str_copy(repo, strrchr(repo, '/') - repo);
+}
+
+// Check "git+https://<host>/<repo path>[.git]" and drop the ".git".
+static const char *git_url_error(LibraryPathInfo *info)
+{
+	if (!str_start_with(info->url, "git+https://")) return "only git+https:// is supported";
+	const char *rest = info->url + strlen("git+https://");
+	const char *slash = strchr(rest, '/');
+	if (!slash) return "expected git+https://<host>/<repo path>";
+	const char *host = str_copy(rest, slash - rest);
+	const GitHost *git_host = find_git_host(host);
+	if (!git_host) return str_printf("unsupported git host '%s' (supported: github.com, codeberg.org, gitlab.com)", host);
+	const char *repo = slash + 1;
+	size_t repo_len = strlen(repo);
+	if (repo_len > 4 && str_eq(repo + repo_len - 4, ".git")) repo = str_copy(repo, repo_len - 4);
+	StringSlice segments = slice_from_string(repo);
+	int count = 0;
+	while (segments.len)
+	{
+		if (!is_valid_library_path_part(slice_next_token(&segments, '/'))) return str_printf("invalid repository path '%s'", repo);
+		count++;
+	}
+	if (count < git_host->min_segments || count > git_host->max_segments)
+	{
+		return str_printf("the repository path on %s must have %d%s segments", host, git_host->min_segments, git_host->max_segments > git_host->min_segments ? " or more" : "");
+	}
+	info->url = str_printf("git+https://%s/%s", host, repo);
+	return NULL;
+}
+
+// The version of a git library is a ref, no version is the default branch (HEAD), which can't have a checksum.
+static const char *git_ref_error(LibraryPathInfo *info)
+{
+	if (info->checksum && !info->version) return "a checksum requires a version";
+	if (info->version && !is_valid_library_path_part(slice_from_string(info->version)))
+	{
+		return str_printf("invalid version '%s'", info->version);
+	}
+	if (info->checksum && str_eq(info->version, "HEAD")) return "a checksum is not allowed with HEAD";
+	return NULL;
+}
+
 static const char *library_path_error(LibraryPathInfo *info, StringSlice namespace_name)
 {
-	if (info->url && !is_valid_scheme(info->url))
+	if (info->git)
+	{
+		const char *error = git_url_error(info);
+		if (!error) error = git_ref_error(info);
+		if (error) return error;
+		const char *slash = strrchr(info->id, '/');
+		const char *expected = git_namespace(info->url);
+		if (!slash || !str_eq(str_copy(info->id, slash - info->id), expected))
+		{
+			return str_printf("the namespace must be '%s', the repository path without its last segment", expected);
+		}
+	}
+	if (info->url && !info->git && !is_valid_scheme(info->url))
 	{
 		return str_printf("the url '%s' must start with http:// or https://", info->url);
 	}
@@ -471,11 +584,61 @@ static const char *library_path_error(LibraryPathInfo *info, StringSlice namespa
 	return NULL;
 }
 
+static LibraryPathInfo parse_path(const char *path, bool allow_short);
+
 // A library path has the format "[<url>:]<namespace>/<name>[@<version>][:<checksum>]", or is a plain
-// library name. If it is invalid, "error" is set.
+// library name. The url is a registry, or a git repository as "git+https://<host>/<repo path>".
+// If it is invalid, "error" is set.
 LibraryPathInfo parse_library_path(const char *path)
 {
+	return parse_path(path, false);
+}
+
+// Like parse_library_path, for a path typed on the command line: a git repository may be given alone,
+// as "git+https://<host>/<repo path>[.git][@<version>][:<checksum>]".
+LibraryPathInfo parse_library_path_arg(const char *path)
+{
+	return parse_path(path, true);
+}
+
+// A git repository without ":<namespace>/<name>": there is no ':' after the scheme, other than in the checksum.
+static bool is_short_git_path(const char *path, const char *checksum)
+{
+	const char *scheme_end = strstr(path, "://");
+	if (!scheme_end) return false;
+	const char *end = path + strlen(path) - (checksum ? 65 : 0);
+	for (const char *c = scheme_end + 3; c < end; c++)
+	{
+		if (*c == ':') return false;
+	}
+	return true;
+}
+
+static LibraryPathInfo parse_short_git_path(const char *path, const char *checksum, bool allow_short)
+{
+	LibraryPathInfo info = { .use_remote_fetch = true, .git = true, .checksum = checksum };
+	const char *url = str_copy(path, strlen(path) - (checksum ? 65 : 0));
+	const char *at = strchr(url, '@');
+	if (at)
+	{
+		info.version = at + 1;
+		url = str_copy(url, at - url);
+	}
+	info.url = url;
+	info.error = git_url_error(&info);
+	if (!info.error) info.error = git_ref_error(&info);
+	if (!info.error && !allow_short)
+	{
+		const char *repo = git_repo_path(info.url);
+		info.error = str_printf("write it as %s:%s/%s[@<version>]", info.url, git_namespace(info.url), guess_library_name(repo));
+	}
+	return info;
+}
+
+static LibraryPathInfo parse_path(const char *path, bool allow_short)
+{
 	const char *checksum = extract_library_checksum(path);
+	if (str_start_with(path, "git+") && is_short_git_path(path, checksum)) return parse_short_git_path(path, checksum, allow_short);
 	StringSlice slice = slice_from_string(path);
 	if (checksum) slice.len -= 65;
 	StringSlice library = extract_library_name(slice);
@@ -500,6 +663,7 @@ LibraryPathInfo parse_library_path(const char *path)
 		.checksum = checksum,
 	};
 	if (namespace_name_slice.ptr != slice.ptr) info.url = str_copy(path, namespace_name_slice.ptr - slice.ptr - 1);
+	info.git = info.url && str_start_with(info.url, "git+");
 	info.error = library_path_error(&info, namespace_name_slice);
 	return info;
 }
@@ -894,6 +1058,7 @@ static const char *vendor_fetch_single(const char* lib, const char* path, bool p
 // A dependency with a checksum must have a version, and match the checksum.
 const char *registry_fetch_single(BuildOptions *options, LibraryPathInfo *dependency, const char *path, bool progress)
 {
+	if (dependency->git) return "fetching git+https libraries is not supported yet";
 	const char *prefixed_checksum_req = dependency->checksum ? str_cat("sha256:", dependency->checksum) : NULL;
 	const char *base = dependency->url ? dependency->url : registry_url(options);
 	LibraryInfo info;
@@ -965,7 +1130,7 @@ void fetch_lib(BuildOptions *options, bool is_vendor, const char **libraries_to_
 		}
 		else
 		{
-			LibraryPathInfo library = parse_library_path(lib);
+			LibraryPathInfo library = parse_library_path_arg(lib);
 			if (library.error || !library.use_remote_fetch)
 			{
 				printf("Skipping invalid library '%s', %s.\n", lib, library.use_remote_fetch ? library.error : "expected " LIBRARY_PATH_FORMAT);

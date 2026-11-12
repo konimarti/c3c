@@ -165,6 +165,8 @@ static const char *target_desc[8] = {
 typedef struct
 {
 	bool use_remote_fetch;
+	// The url is a git repository, "git+https://<host>/<repo path>": "version" is the ref, "checksum" the content hash.
+	bool git;
 	const char *url;
 	const char *id;
 	const char *name;
@@ -706,6 +708,7 @@ void add_libraries_to_project_file(const char** libs);
 const char *registry_url(BuildOptions *options);
 void fetch_lib(BuildOptions *options, bool is_vendor, const char **libraries_to_fetch);
 LibraryPathInfo parse_library_path(const char *path);
+LibraryPathInfo parse_library_path_arg(const char *path);
 const char *load_fetch_info(const char *base, const char *name, LibraryInfo *info);
 const char *registry_fetch_single(BuildOptions *options, LibraryPathInfo *dependency, const char *path, bool progress);
 const char *library_path_info_to_string(LibraryPathInfo *dependency);

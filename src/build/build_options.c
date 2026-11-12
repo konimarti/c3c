@@ -71,7 +71,7 @@ static void usage(bool full)
 	print_cmd("dynamic-lib <file1> [<file2> ...]", "Compile files without a project into a dynamic library.");
 	print_cmd("source-lib <file1> [<file2> ...]", "Pack files without a project into a source library (.c3l), use -o to set the library name.");
 	print_cmd("vendor-fetch <library> ...", "Fetches one or more libraries from the vendor collection.");
-	print_cmd("fetch <library> ...", "Fetches one or more libraries.");
+	print_cmd("fetch <library> ...", "Fetches one or more libraries from the registry, or from a git repository as git+https://<host>/<repo>[@<version>].");
 	print_cmd("fetch-list", "Prints all available libraries");
 	print_cmd("fetch-info <library>", "Prints info about a given library.");
 	print_cmd("project <subcommand> ...", "Manipulate or view project files.");
@@ -371,7 +371,7 @@ static void project_usage(void)
 	PRINTF("Project Subcommands:");
 	print_cmd("view", "view the current projects structure.");
 	print_cmd("add-target <name>  <target_type>  [sources...]", "add a new target to the project.");
-	print_cmd("fetch [<library>...]", "fetch the named project libraries, or list the missing ones.");
+	print_cmd("fetch [<library>...]", "fetch the named project libraries (registry or git+https), or list the missing ones.");
 }
 
 static void project_view_usage(void)
