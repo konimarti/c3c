@@ -1869,7 +1869,7 @@ CHECK_ELLIPSIS:
 				}
 				else
 				{
-					if (!parse_decl_initializer(c, param)) return poisoned_decl;
+					if (!parse_decl_initializer(c, param)) return false;
 				}
 			}
 		}
@@ -1990,8 +1990,8 @@ static bool parse_struct_body(ParseContext *c, Decl *parent)
 			member->strukt.parent = declid(parent);
 			if (decl_kind == DECL_BITSTRUCT)
 			{
-				TRY_CONSUME_OR_RET(TOKEN_COLON, "':' followed by bitstruct type (e.g. 'int') was expected here.", poisoned_decl);
-				ASSIGN_TYPE_OR_RET(member->strukt.container_type, parse_optional_type_no_generic(c), poisoned_decl);
+				TRY_CONSUME_OR_RET(TOKEN_COLON, "':' followed by bitstruct type (e.g. 'int') was expected here.", decl_poison(parent));
+				ASSIGN_TYPE_OR_RET(member->strukt.container_type, parse_optional_type_no_generic(c), decl_poison(parent));
 				if (!parse_attributes_for_global(c, member)) return decl_poison(parent);
 				if (!parse_bitstruct_body(c, member)) return decl_poison(parent);
 			}
